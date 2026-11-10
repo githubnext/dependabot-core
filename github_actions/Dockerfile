@@ -6,6 +6,11 @@ ARG GH_ACTIONS_LOCK_VERSION=v0.4.1
 ARG GH_ACTIONS_LOCK_AMD64_CHECKSUM=39deb2fe714dbf74b073d8245fc7f3d50cd0eee18d5c0900e9e849ae933ae17e
 ARG GH_ACTIONS_LOCK_ARM64_CHECKSUM=aee61c993da36a5f09be2c77e6e4a1a22542a1b30ded4996bf8301c15dcf2b39
 
+# gh aw uses gh to resolve action references that are not in its embedded pin catalog.
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /opt/github_actions/bin \
     && curl -fsSL -o /opt/github_actions/bin/gh-actions-lock \
       "https://github.com/github/gh-actions-lock/releases/download/${GH_ACTIONS_LOCK_VERSION}/linux-${TARGETARCH}" \

@@ -8,6 +8,7 @@ require "dependabot/file_fetchers"
 require "dependabot/file_fetchers/base"
 require "dependabot/experiments"
 require "dependabot/github_actions/constants"
+require "dependabot/github_actions/agentic_workflow"
 require "dependabot/github_actions/workflow_file"
 
 module Dependabot
@@ -48,6 +49,7 @@ module Dependabot
         fetched_files += correctly_encoded_workflow_files
 
         if fetched_files.any?
+          fetched_files += agentic_workflow_files
           # The lockfile is additive: it is only fetched alongside workflow files
           # and never activates the ecosystem on its own. Relocking also requires
           # every workflow to be materialized, so retain the workflow-only path if
@@ -77,6 +79,76 @@ module Dependabot
       end
 
       private
+
+      sig { returns(T::Array[DependencyFile]) }
+      def agentic_workflow_files
+        generated = correctly_encoded_workflow_files.select { |file| AgenticWorkflow.generated?(file) }
+        return [] if generated.empty?
+
+        files = T.let({}, T::Hash[String, DependencyFile])
+        generated.each do |file|
+          file.support_file = true
+          source_path = AgenticWorkflow.source_path(file)
+          markdown = fetch_file_from_host(relative_to_directory(source_path))
+          fetch_agentic_imports(markdown, File.dirname(source_path), files)
+        end
+        config_paths = generated.map do |file|
+          File.join(File.dirname(file.path.delete_prefix("/")), "aw.json")
+        end
+        (config_paths + [AgenticWorkflow::ACTION_CACHE_PATH]).uniq.each do |path|
+          file = fetch_file_if_present(relative_to_directory(path))
+          next unless file
+
+          file.support_file = true
+          files[path] = file
+        end
+        files.values
+      end
+
+      sig do
+        params(
+          file: DependencyFile,
+          workflow_directory: String,
+          files: T::Hash[String, DependencyFile],
+          include_frontmatter: T::Boolean
+        ).void
+      end
+      def fetch_agentic_imports(file, workflow_directory, files, include_frontmatter: true)
+        path = file.path.delete_prefix("/")
+        existing = files[path]
+        return if agentic_file_processed?(existing, include_frontmatter)
+        raise DependencyFileNotParseable, file.path unless file.content&.valid_encoding?
+
+        file = existing || file
+        files[path] = file
+        file.support_file = true
+        return unless file.name.end_with?(".md")
+
+        file.support_file = !include_frontmatter
+        AgenticWorkflow.new(file).imports(
+          workflow_directory: workflow_directory, include_frontmatter: include_frontmatter
+        ).each do |import|
+          relative_path = relative_to_directory(import.path)
+          imported = files[import.path] || fetch_agentic_import(import, relative_path)
+          next unless imported
+
+          fetch_agentic_imports(
+            imported, workflow_directory, files, include_frontmatter: include_frontmatter && import.frontmatter
+          )
+        end
+      end
+
+      sig { params(file: T.nilable(DependencyFile), include_frontmatter: T::Boolean).returns(T::Boolean) }
+      def agentic_file_processed?(file, include_frontmatter)
+        return false unless file
+
+        !include_frontmatter || !file.support_file?
+      end
+
+      sig { params(import: AgenticWorkflow::Import, relative_path: String).returns(T.nilable(DependencyFile)) }
+      def fetch_agentic_import(import, relative_path)
+        import.optional ? fetch_file_if_present(relative_path) : fetch_file_from_host(relative_path)
+      end
 
       # The lockfile plus everything the engine needs to relock it, or nothing when
       # a workflow it would read is invalidly encoded.

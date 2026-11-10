@@ -1,0 +1,8 @@
+# gh-aw-metadata: {"schema_version":"v4","compiler_version":"v1.0.1"}
+# gh-aw-manifest: {"version":1,"actions":[{"repo":"actions/checkout","sha":"11d5960a326750d5838078e36cf38b85af677262","version":"v4"},{"repo":"actions/setup-node","sha":"a0853c24544627f65ddf259abe73b1d18a591444","version":"v5"}]}
+on: workflow_dispatch
+jobs:
+  agent:
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5

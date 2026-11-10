@@ -251,6 +251,7 @@ module Dependabot
         options: job.experiments.merge(
           security_updates_only: job.security_updates_only?,
           source_hostname: job.source.hostname,
+          source_repo: job.source.repo,
           update_cooldown: job.security_updates_only? ? nil : job.cooldown
         )
       )

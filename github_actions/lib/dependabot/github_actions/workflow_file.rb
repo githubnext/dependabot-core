@@ -14,6 +14,7 @@ module Dependabot
 
       Path = T.type_alias { T::Array[T.any(String, Integer)] }
       Metadata = T.type_alias { T::Hash[Symbol, Object] }
+      STEP_KEYS = %w(steps pre-agent-steps post-steps).freeze
 
       require_relative "workflow_file/node_context"
       require_relative "workflow_file/uses_declaration"
@@ -340,7 +341,7 @@ module Dependabot
 
           child_steps_sequence = steps_sequence
           child_steps_key_node = steps_key_node
-          if raw_key_node.value == STEPS_KEY && value_node.is_a?(Psych::Nodes::Sequence)
+          if STEP_KEYS.include?(raw_key_node.value) && value_node.is_a?(Psych::Nodes::Sequence)
             child_steps_sequence = value_node
             child_steps_key_node = raw_key_node
             @steps_key_nodes[value_node] = raw_key_node

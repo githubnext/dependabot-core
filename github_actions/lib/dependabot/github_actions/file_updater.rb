@@ -8,6 +8,7 @@ require "dependabot/errors"
 require "dependabot/file_updaters"
 require "dependabot/file_updaters/base"
 require "dependabot/github_actions/constants"
+require "dependabot/github_actions/agentic_workflow"
 require "dependabot/github_actions/lockfile"
 require "dependabot/github_actions/workflow_file"
 
@@ -17,12 +18,15 @@ module Dependabot
       extend T::Sig
 
       require_relative "file_updater/workflow_updater"
+      require_relative "file_updater/agentic_workflow_compiler"
 
       sig { override.returns(T::Array[Dependabot::DependencyFile]) }
       def updated_dependency_files
+        reject_generated_updates!
         updated_files = changed_workflow_files.map do |file|
           updated_file(file: file, content: updated_workflow_file_content(file))
         end
+        updated_files = compile_agentic_files(updated_files)
         updated_files.concat(relocked_files(updated_files))
         updated_files.reject! { |f| dependency_files.include?(f) }
         raise "No files changed!" if updated_files.none?
@@ -31,6 +35,70 @@ module Dependabot
       end
 
       private
+
+      sig { void }
+      def reject_generated_updates!
+        return unless dependency_files.any? do |file|
+          AgenticWorkflow.generated?(file) && requirement_changed?(file, dependency)
+        end
+
+        raise DependencyFileNotResolvable,
+              "gh aw generated workflows must be updated through their source Markdown, not their .lock.yml files"
+      end
+
+      sig { params(updated_files: T::Array[Dependabot::DependencyFile]).returns(T::Array[Dependabot::DependencyFile]) }
+      def compile_agentic_files(updated_files)
+        changed_paths = updated_files.filter_map { |file| repo_relative_path(file) if file.name.end_with?(".md") }
+        return updated_files if changed_paths.empty?
+
+        workflows = affected_agentic_workflows(changed_paths)
+        return updated_files if workflows.empty?
+
+        rewritten_files = dependency_files.map do |file|
+          updated_files.find { |updated| updated.name == file.name } || file
+        end
+        compiled_files = AgenticWorkflowCompiler.new(
+          credentials: credentials,
+          repository: T.cast(options[:source_repo], T.nilable(String))
+        ).compile(files: rewritten_files, workflows: workflows)
+
+        (updated_files + compiled_files).to_h { |file| [repo_relative_path(file), file] }.values
+      end
+
+      sig { params(changed_paths: T::Array[String]).returns(T::Array[Dependabot::DependencyFile]) }
+      def affected_agentic_workflows(changed_paths)
+        dependency_files.select { |file| AgenticWorkflow.generated?(file) }.filter_map do |lock|
+          path = AgenticWorkflow.source_path(lock)
+          markdown = dependency_files.find { |file| repo_relative_path(file) == path }
+          raise DependencyFileNotFound, path unless markdown
+
+          markdown if agentic_workflow_changed?(markdown, File.dirname(path), changed_paths, Set.new)
+        end
+      end
+
+      sig do
+        params(
+          file: Dependabot::DependencyFile,
+          workflow_directory: String,
+          changed_paths: T::Array[String],
+          seen: T::Set[String]
+        ).returns(T::Boolean)
+      end
+      def agentic_workflow_changed?(file, workflow_directory, changed_paths, seen)
+        path = repo_relative_path(file)
+        return true if changed_paths.include?(path)
+        return false unless seen.add?(path)
+
+        AgenticWorkflow.new(file).imports(workflow_directory: workflow_directory).any? do |import|
+          next false unless import.frontmatter
+
+          imported = dependency_files.find { |candidate| repo_relative_path(candidate) == import.path }
+          next false unless imported
+
+          imported.name.end_with?(".md") &&
+            agentic_workflow_changed?(imported, workflow_directory, changed_paths, seen)
+        end
+      end
 
       sig { returns(Dependabot::Dependency) }
       def dependency
@@ -46,11 +114,11 @@ module Dependabot
         raise "No workflow files!"
       end
 
-      # Workflow files (everything except the lockfile) whose requirement changed.
+      # Editable workflow sources whose requirement changed.
       sig { returns(T::Array[Dependabot::DependencyFile]) }
       def changed_workflow_files
         dependency_files
-          .reject { |f| lockfile?(f) }
+          .reject { |f| lockfile?(f) || AgenticWorkflow.generated?(f) }
           .select { |f| requirement_changed?(f, dependency) }
       end
 
@@ -64,7 +132,9 @@ module Dependabot
           .returns(T::Array[Dependabot::DependencyFile])
       end
       def relocked_files(updated_workflow_files)
-        changed_repository_workflows, changed_actions = changed_workflow_files.partition do |file|
+        changed_repository_workflows, changed_actions = updated_workflow_files
+                                                        .select { |file| file.name.match?(MANIFEST_FILE_PATTERN) }
+                                                        .partition do |file|
           File.dirname(repo_relative_path(file)) == WORKFLOW_DIRECTORY
         end
         # A bumped composite changes the lock entries of every workflow reaching it.
@@ -213,11 +283,14 @@ module Dependabot
 
       sig { params(file: Dependabot::DependencyFile).returns(String) }
       def updated_workflow_file_content(file)
-        WorkflowUpdater.new(
-          file: file,
+        agentic = AgenticWorkflow.new(file) if file.name.end_with?(".md")
+        yaml_file = agentic ? updated_file(file: file, content: agentic.frontmatter) : file
+        content = WorkflowUpdater.new(
+          file: yaml_file,
           dependency: dependency,
           commenter: version_commenter
         ).updated_content
+        agentic ? agentic.updated_content(content) : content
       end
 
       sig { returns(WorkflowUpdater::VersionCommenter) }
