@@ -15,8 +15,6 @@ module Dependabot
       class AgenticWorkflowCompiler
         extend T::Sig
 
-        require_relative "agentic_workflow_compiler/release"
-
         sig { params(credentials: T::Array[Dependabot::Credential], repository: T.nilable(String)).void }
         def initialize(credentials:, repository: nil)
           @credentials = credentials
@@ -34,8 +32,7 @@ module Dependabot
             root = directory.to_s
             materialize(files, root)
             SharedHelpers.run_shell_command(["git", "init", "--quiet"], cwd: root)
-            binary = Release.new(credentials: @credentials).download(root)
-            workflows.each { |workflow| compile_workflow(binary, root, workflow) }
+            workflows.each { |workflow| compile_workflow(root, workflow) }
             compiled_files(root, files, workflows)
           end
         end
@@ -51,13 +48,13 @@ module Dependabot
           end
         end
 
-        sig { params(binary: String, root: String, workflow: Dependabot::DependencyFile).void }
-        def compile_workflow(binary, root, workflow)
+        sig { params(root: String, workflow: Dependabot::DependencyFile).void }
+        def compile_workflow(root, workflow)
           path = workflow.path.delete_prefix("/")
           arguments = [
-            binary, "compile", "--fix", "--no-check-update", "--dir", File.dirname(path), "--", File.basename(path)
+            "gh", "aw", "compile", "--fix", "--no-check-update", "--dir", File.dirname(path), "--", File.basename(path)
           ]
-          arguments.insert(2, "--schedule-seed", @repository) if @repository
+          arguments.insert(3, "--schedule-seed", @repository) if @repository
           env = Lockfile::Env.build(@credentials).merge("GH_PROMPT_DISABLED" => "1")
           stdout, stderr, process = CommandHelpers.capture3_with_timeout([env, *arguments, { chdir: root }])
           return if process&.success?

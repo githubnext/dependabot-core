@@ -75,6 +75,8 @@ jobs:
 
       - name: Build ecosystem image
         if: steps.changes.outputs[matrix.suite.path] == 'true'
+        env:
+          GH_TOKEN: ${{ matrix.suite.path == 'github_actions' && secrets.GITHUB_TOKEN || '' }}
         run: script/build ${{ matrix.suite.build || matrix.suite.path }}
 
       - name: Run ${{ matrix.suite.name }} tests

@@ -43,9 +43,6 @@ RSpec.describe Dependabot::GithubActions::FileUpdater::AgenticWorkflowCompiler d
   # rubocop:enable RSpec/ScatteredLet
 
   before do
-    release_class = Dependabot::GithubActions::FileUpdater::AgenticWorkflowCompiler::Release
-    release = instance_double(release_class, download: "/compiler/gh-aw")
-    allow(release_class).to receive(:new).and_return(release)
     allow(Dependabot::CommandHelpers).to receive(:capture3_with_timeout).and_call_original
   end
 
@@ -76,7 +73,7 @@ RSpec.describe Dependabot::GithubActions::FileUpdater::AgenticWorkflowCompiler d
     expect(T.must(files.first).content).to eq(compiled_content)
     expect(T.must(files.first).support_file?).to be(false)
     expect(Dependabot::CommandHelpers).to have_received(:capture3_with_timeout).with(
-      [hash_including("GH_PROMPT_DISABLED" => "1"), "/compiler/gh-aw", "compile",
+      [hash_including("GH_PROMPT_DISABLED" => "1"), "gh", "aw", "compile",
        "--schedule-seed", "gocardless/bump", "--fix", "--no-check-update", "--dir", ".github/workflows",
        "--", "agentic.md", anything]
     )

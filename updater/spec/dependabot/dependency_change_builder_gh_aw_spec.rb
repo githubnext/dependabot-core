@@ -83,9 +83,6 @@ RSpec.describe Dependabot::DependencyChangeBuilder do
   # rubocop:enable RSpec/ScatteredLet
 
   before do
-    release_class = Dependabot::GithubActions::FileUpdater::AgenticWorkflowCompiler::Release
-    release = instance_double(release_class, download: "/compiler/gh-aw")
-    allow(release_class).to receive(:new).and_return(release)
     allow(Dependabot::CommandHelpers).to receive(:capture3_with_timeout).and_call_original
     allow(Dependabot::CommandHelpers).to receive(:capture3_with_timeout).with(array_including("compile")) do |args|
       root = args.last.fetch(:chdir)

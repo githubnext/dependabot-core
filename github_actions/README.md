@@ -15,15 +15,18 @@ The usual `github-actions` configuration applies; no separate ecosystem is neede
 Compiled workflows are identified by their `.lock.yml` filenames and the JSON
 `gh-aw-metadata` or `gh-aw-manifest` comments.
 
-Compilation downloads the latest stable gh aw release that was published at least
-three days ago, verifies its release checksum, and runs it in the updater
-container. Prereleases and drafts are excluded. Local imports, `aw.json`, and the
-action pin cache are preserved as compilation inputs; updated lockfiles and cache
-changes are included in the dependency update. Compilation failures prevent the
-update from being returned.
+The compiler is installed in the updater image as the `gh-aw` GitHub CLI extension,
+pinned through `GH_AW_VERSION`. Local imports, `aw.json`, and the action pin cache
+are preserved as compilation inputs; updated lockfiles and cache changes are
+included in the dependency update. Compilation failures prevent the update from
+being returned.
 
-The GitHub CLI is required alongside the compiler to resolve action references
-outside its embedded pin catalog.
+The GitHub CLI is also used to resolve action references outside the compiler's
+embedded pin catalog.
+
+Building the updater image requires `GH_TOKEN` so the GitHub CLI can install the
+pinned extension. The build passes it as a BuildKit secret; it is not stored in
+the image.
 
 Actions inserted by the compiler are not independently updated by Dependabot.
 They may change when recompiling with a newer eligible compiler release.
