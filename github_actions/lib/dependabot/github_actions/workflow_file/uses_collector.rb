@@ -22,9 +22,20 @@ module Dependabot
         sig { returns(T::Array[ResolvedUse]) }
         def uses
           root, path = workflow_root
-          return [] unless root && path
+          declarations = root && path ? collect_uses(root, path) : []
+          workflow_data = data
+          return declarations unless workflow_data.is_a?(Hash)
 
-          collect_uses(root, path)
+          STEP_KEYS.each do |key|
+            steps = workflow_data[key]
+            declarations.concat(collect_uses(steps, [key])) if steps
+          end
+
+          safe_outputs = workflow_data["safe-outputs"]
+          return declarations unless safe_outputs.is_a?(Hash)
+
+          jobs = safe_outputs["jobs"]
+          declarations + (jobs ? collect_uses(jobs, %w(safe-outputs jobs)) : [])
         end
 
         private

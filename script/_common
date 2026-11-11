@@ -98,6 +98,10 @@ function docker_build() {
   ensure_compatible_docker_api_version
   ECOSYSTEM="$1"
   set_tag
+  if [[ "$ECOSYSTEM" == "github_actions" && -z "${GH_TOKEN:-}" ]]; then
+    echo "GH_TOKEN is required to install the pinned gh-aw extension during the image build" >&2
+    return 1
+  fi
 
   if [ -z "$DEPENDABOT_USER_UID" ]; then
     export DEPENDABOT_USER_UID=1000
@@ -173,11 +177,16 @@ function docker_build() {
     # Remove when the bug is resolved.
     ecosystem_context_args=(--build-context "$UPDATER_CORE_IMAGE=docker-image://$UPDATER_CORE_LOCAL_IMAGE")
   fi
+  local -a ecosystem_secret_args=()
+  if [[ "$ECOSYSTEM" == "github_actions" ]]; then
+    ecosystem_secret_args=(--secret "id=github_token,env=GH_TOKEN")
+  fi
 
   # shellcheck disable=SC2086  # word-splitting is intentional for build args
   if ! $ECOSYSTEM_BUILD \
     $DOCKER_BUILD_ARGS \
     "${ecosystem_context_args[@]}" \
+    "${ecosystem_secret_args[@]}" \
     -t "$UPDATER_IMAGE_NAME" \
     -f "$DOCKERFILE_PATH" \
     .; then

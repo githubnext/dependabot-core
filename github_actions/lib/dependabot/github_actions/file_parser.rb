@@ -9,6 +9,7 @@ require "dependabot/errors"
 require "dependabot/file_parsers"
 require "dependabot/file_parsers/base"
 require "dependabot/github_actions/constants"
+require "dependabot/github_actions/agentic_workflow"
 require "dependabot/github_actions/lockfile/reader"
 require "dependabot/github_actions/version"
 require "dependabot/github_actions/package_manager"
@@ -56,7 +57,11 @@ module Dependabot
       sig { params(file: Dependabot::DependencyFile).returns(Dependabot::FileParsers::Base::DependencySet) }
       def workfile_file_dependencies(file)
         dependency_set = DependencySet.new
-        workflow_file = WorkflowFile.new(T.must(file.content))
+        workflow_file = if file.name.end_with?(".md")
+                          AgenticWorkflow.new(file).workflow_file
+                        else
+                          WorkflowFile.new(T.must(file.content))
+                        end
         workflow_file.uses_declarations.group_by(&:value).each do |string, declarations|
           dep = dependency_for_declarations(file, workflow_file, string, declarations)
           next unless dep
@@ -226,7 +231,9 @@ module Dependabot
 
       sig { returns(T::Array[Dependabot::DependencyFile]) }
       def workflow_files
-        dependency_files.reject { |file| file.support_file? || file.path.delete_prefix("/") == LOCKFILE_PATH }
+        dependency_files.reject do |file|
+          file.support_file? || AgenticWorkflow.generated?(file) || file.path.delete_prefix("/") == LOCKFILE_PATH
+        end
       end
 
       sig { override.void }
