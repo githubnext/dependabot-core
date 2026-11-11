@@ -83,6 +83,7 @@ RSpec.describe Dependabot::DependencyChangeBuilder do
   # rubocop:enable RSpec/ScatteredLet
 
   before do
+    Dependabot::FileUpdaters.register("github_actions", Dependabot::GithubActions::FileUpdater)
     allow(Dependabot::CommandHelpers).to receive(:capture3_with_timeout).and_call_original
     allow(Dependabot::CommandHelpers).to receive(:capture3_with_timeout).with(array_including("compile")) do |args|
       root = args.last.fetch(:chdir)
