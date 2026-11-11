@@ -29,5 +29,6 @@ docker run --env DEPENDABOT_TEST_ACCESS_TOKEN \
   --pull never \
   --env VCR \
   --rm \
+  -v "$(pwd)/github_actions/lib:/home/dependabot/github_actions/lib" \
   -v "$(pwd)/updater/spec/fixtures/vcr_cassettes:/home/dependabot/dependabot-updater/spec/fixtures/vcr_cassettes" \
   "ghcr.io/dependabot/dependabot-updater-bundler:latest" bundle exec rspec "${rspec_args[@]}"
